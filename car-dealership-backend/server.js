@@ -21,10 +21,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Подключение к MySQL
 // Подключение к MySQL
 const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST || 'db4free.net', // Host из Railway
-    user: process.env.MYSQL_USER || 'laimfresh1',     // User из Railway
-    password: process.env.MYSQL_PASSWORD || 'Q1qqqqqq', // Password из Railway
-    database: process.env.MYSQL_DATABASE || 'autosalon1', // Database из Railway
+    host: process.env.MYSQL_HOST || 'bvmeqovnx74dgjg8fx95-mysql.services.clever-cloud.com', // Host из Railway
+    user: process.env.MYSQL_USER || 'ue4jayvcpjd23i90',     // User из Railway
+    password: process.env.MYSQL_PASSWORD || 'HKkh8FyE8yNboQydEZBP', // Password из Railway
+    database: process.env.MYSQL_DATABASE || 'bvmeqovnx74dgjg8fx95', // Database из Railway
     port: process.env.MYSQL_PORT || 3306,       // Port из Railway
     waitForConnections: true,
     connectionLimit: 10,
