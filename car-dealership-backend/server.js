@@ -30,7 +30,15 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0,
 });
-
+// Проверка подключения при старте
+pool.getConnection()
+  .then(conn => {
+    console.log('✅ Успешное подключение к MySQL!');
+    conn.release();
+  })
+  .catch(err => {
+    console.error('❌ Ошибка подключения к MySQL:', err.message);
+  });
 // Инициализация базы данных
 async function initializeDatabase() {
     try {
@@ -282,7 +290,7 @@ app.get('/api/customers', async (req, res) => {
 
         // Получаем клиентов с учетом пагинации
         const [rows] = await pool.query('SELECT * FROM customers LIMIT ? OFFSET ?', [limit, offset]);
-
+        // Опечатка: OFFSET написано как OFSET (не хватает буквы F)
         res.json({
             data: rows,
             meta: {
