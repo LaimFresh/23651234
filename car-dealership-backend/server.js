@@ -1,262 +1,407 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-const dotenv = require('dotenv');
+const mysql = require('mysql2/promise');
+const bcrypt = require('bcrypt');
 const cors = require('cors');
+const dotenv = require('dotenv');
+const path = require('path');
 
+// Загрузка переменных окружения
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Путь к базе данных
-const dbPath = process.env.DB_PATH || path.join(__dirname, 'database.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error opening database:', err.message);
-    } else {
-        console.log('Connected to the database');
-    }
-});
-
-// Создание таблиц
-db.serialize(() => {
-    db.run(`
-        CREATE TABLE IF NOT EXISTS cars (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            price REAL NOT NULL,
-            description TEXT NOT NULL,
-            image TEXT NOT NULL,
-            year INTEGER NOT NULL,
-            mileage INTEGER NOT NULL,
-            fuelType TEXT NOT NULL,
-            transmission TEXT NOT NULL,
-            color TEXT NOT NULL,
-            status TEXT NOT NULL
-        )
-    `, (err) => {
-        if (err) {
-            console.error('Error creating cars table:', err.message);
-        } else {
-            console.log('Cars table created or already exists');
-        }
-    });
-
-    db.run(`
-        CREATE TABLE IF NOT EXISTS customers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            firstName TEXT NOT NULL,
-            lastName TEXT NOT NULL,
-            email TEXT NOT NULL,
-            phone TEXT NOT NULL,
-            address TEXT NOT NULL,
-            city TEXT NOT NULL,
-            state TEXT NOT NULL,
-            zipCode TEXT NOT NULL,
-            country TEXT NOT NULL,
-            avatar TEXT NOT NULL
-        )
-    `, (err) => {
-        if (err) {
-            console.error('Error creating customers table:', err.message);
-        } else {
-            console.log('Customers table created or already exists');
-        }
-    });
-});
-
 // Middleware
-app.use(cors()); // Разрешаем все источники
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, '../autosalon-frontend/dist')));
+app.use(cors())
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/static', express.static(path.join(__dirname, 'public', 'static')));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Логирование запросов
-app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`);
-    next();
+// Подключение к MySQL
+// Подключение к MySQL
+const pool = mysql.createPool({
+    host: process.env.MYSQL_HOST || 'db4free.net', // Host из Railway
+    user: process.env.MYSQL_USER || 'laimfresh1',     // User из Railway
+    password: process.env.MYSQL_PASSWORD || 'Q1qqqqqq', // Password из Railway
+    database: process.env.MYSQL_DATABASE || 'autosalon1', // Database из Railway
+    port: process.env.MYSQL_PORT || 3306,       // Port из Railway
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
 });
 
-// Маршруты API для автомобилей
-const { getAllCars, getCarById, addCar, updateCar, deleteCar } = require('./models/CarModel');
-const { getAllCustomers, getCustomerById, addCustomer, updateCustomer, deleteCustomer } = require('./models/CustomerModel');
+// Инициализация базы данных
+async function initializeDatabase() {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS cars (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name TEXT NOT NULL,
+                price REAL NOT NULL,
+                description TEXT NOT NULL,
+                image TEXT NOT NULL,
+                year INTEGER NOT NULL,
+                mileage INTEGER NOT NULL,
+                fuelType TEXT NOT NULL,
+                transmission TEXT NOT NULL,
+                color TEXT NOT NULL,
+                status TEXT NOT NULL
+            )
+        `);
 
-// Получение списка автомобилей
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS customers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                firstName TEXT NOT NULL,
+                lastName TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                address TEXT NOT NULL,
+                city TEXT NOT NULL,
+                state TEXT NOT NULL,
+                zipCode TEXT NOT NULL,
+                country TEXT NOT NULL,
+                avatar TEXT NOT NULL
+            )
+        `);
+
+        console.log('Database tables initialized');
+    } catch (error) {
+        console.error('Error initializing database:', error.message);
+    }
+}
+// Функция для заполнения таблицы cars
+async function seedCars() {
+    try {
+        const cars = [];
+        for (let i = 1; i <= 100; i++) {
+            cars.push([
+                `Car ${i}`,
+                Math.floor(Math.random() * 100000) + 10000,
+                `Description for Car ${i}`,
+                `car${i}.jpg`,
+                2010 + Math.floor(Math.random() * 10),
+                Math.floor(Math.random() * 100000),
+                ['Petrol', 'Diesel', 'Electric'][Math.floor(Math.random() * 3)],
+                ['Automatic', 'Manual'][Math.floor(Math.random() * 2)],
+                ['Red', 'Blue', 'Black', 'White'][Math.floor(Math.random() * 4)],
+                ['Available', 'Sold'][Math.floor(Math.random() * 2)],
+            ]);
+        }
+
+        // Очистка таблицы cars
+        await pool.query('DELETE FROM cars');
+        console.log('Cars table cleared');
+
+        // Вставка данных
+        const query = `
+            INSERT INTO cars (name, price, description, image, year, mileage, fuelType, transmission, color, status)
+            VALUES ?
+        `;
+        await pool.query(query, [cars]);
+        console.log('Cars seeded successfully');
+    } catch (error) {
+        console.error('Error seeding cars:', error.message);
+        throw error;
+    }
+}
+
+// Функция для заполнения таблицы customers
+async function seedCustomers() {
+    try {
+        const customers = [];
+        for (let i = 1; i <= 100; i++) {
+            customers.push([
+                `First${i}`,
+                `Last${i}`,
+                `email${i}@example.com`,
+                `+123456789${i}`,
+                `Address ${i}`,
+                `City ${i}`,
+                `State ${i}`,
+                `Zip${i}`,
+                `Country ${i}`,
+                `avatar${i}.jpg`,
+            ]);
+        }
+
+        // Очистка таблицы customers
+        await pool.query('DELETE FROM customers');
+        console.log('Customers table cleared');
+
+        // Вставка данных
+        const query = `
+            INSERT INTO customers (firstName, lastName, email, phone, address, city, state, zipCode, country, avatar)
+            VALUES ?
+        `;
+        await pool.query(query, [customers]);
+        console.log('Customers seeded successfully');
+    } catch (error) {
+        console.error('Error seeding customers:', error.message);
+        throw error;
+    }
+}
+
+// Функция для запуска сидера
+async function runSeeder() {
+    try {
+        // Проверяем и заполняем таблицу cars
+        const [carRows] = await pool.query('SELECT COUNT(*) AS count FROM cars');
+        if (carRows[0].count === 0) {
+            await seedCars();
+        } else {
+            console.log('Cars table already contains data. Skipping seeding.');
+        }
+
+        // Проверяем и заполняем таблицу customers
+        const [customerRows] = await pool.query('SELECT COUNT(*) AS count FROM customers');
+        if (customerRows[0].count === 0) {
+            await seedCustomers();
+        } else {
+            console.log('Customers table already contains data. Skipping seeding.');
+        }
+
+        console.log('Seeder completed.');
+    } catch (error) {
+        console.error('Error during seeding:', error.message);
+    }
+}
+// Маршруты API для автомобилей
 app.get('/api/cars', async (req, res) => {
     try {
-        const cars = await getAllCars();
-        res.json(cars);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        const page = parseInt(req.query.page) || 1; // Текущая страница (по умолчанию 1)
+        const limit = parseInt(req.query.limit) || 10; // Количество элементов на странице (по умолчанию 10)
+        const offset = (page - 1) * limit;
+
+        // Подсчитываем общее количество автомобилей
+        const [countRows] = await pool.query('SELECT COUNT(*) AS total FROM cars');
+        const total = countRows[0].total;
+
+        // Получаем автомобили с учетом пагинации
+        const [rows] = await pool.query('SELECT * FROM cars LIMIT ? OFFSET ?', [limit, offset]);
+
+        res.json({
+            data: rows,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
+    } catch (error) {
+        console.error('Error fetching cars:', error.message);
+        res.status(500).json({ error: 'Failed to fetch cars', details: error.message });
     }
 });
-
-// Получение конкретного автомобиля по ID
 app.get('/api/cars/:id', async (req, res) => {
+    const { id } = req.params;
     try {
-        const id = req.params.id;
-        const car = await getCarById(id);
-
-        if (!car) {
-            return res.status(404).json({ error: 'Автомобиль не найден' });
+        const [rows] = await pool.query('SELECT * FROM cars WHERE id = ?', [id]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Car not found' });
         }
+        res.json(rows[0]); // Возвращаем первый элемент массива
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch car', details: error.message });
+    }
+});
+app.post('/api/cars', async (req, res) => {
+    const { name, price, description, image, year, mileage, fuelType, transmission, color, status } = req.body;
 
-        res.json(car);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    try {
+        const [result] = await pool.query(
+            'INSERT INTO cars (name, price, description, image, year, mileage, fuelType, transmission, color, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [name, price, description, image, year, mileage, fuelType, transmission, color, status]
+        );
+        res.status(201).json({ id: result.insertId });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to add car', details: error.message });
     }
 });
 
-app.post('/api/cars', (req, res) => {
-    const newCar = req.body;
-  
-    // Добавление нового автомобиля в базу данных
-    db.run(
-      'INSERT INTO cars (name, price, description, image, year, mileage, fuelType, transmission, color, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        newCar.name,
-        newCar.price,
-        newCar.description,
-        newCar.image,
-        newCar.year,
-        newCar.mileage,
-        newCar.fuelType,
-        newCar.transmission,
-        newCar.color,
-        newCar.status,
-      ],
-      function (err) {
-        if (err) {
-          return res.status(500).json({ error: err.message });
-        }
-        res.status(201).json({ id: this.lastID });
-      }
-    );
-  });
-
-// Обновление автомобиля
 app.put('/api/cars/:id', async (req, res) => {
-    try {
-        const id = req.params.id;
-        const updatedCar = req.body;
-        const result = await updateCar(id, updatedCar);
+    const { id } = req.params;
+    const updatedCar = req.body;
 
-        if (result.changes === 0) {
-            return res.status(404).json({ error: 'Автомобиль не найден' });
+    try {
+        const [result] = await pool.query(
+            'UPDATE cars SET name = ?, price = ?, description = ?, image = ?, year = ?, mileage = ?, fuelType = ?, transmission = ?, color = ?, status = ? WHERE id = ?',
+            [
+                updatedCar.name,
+                updatedCar.price,
+                updatedCar.description,
+                updatedCar.image,
+                updatedCar.year,
+                updatedCar.mileage,
+                updatedCar.fuelType,
+                updatedCar.transmission,
+                updatedCar.color,
+                updatedCar.status,
+                id,
+            ]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Car not found' });
         }
 
-        res.json({ message: 'Автомобиль успешно обновлен' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.json({ message: 'Car updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update car', details: error.message });
     }
 });
 
-// Удаление автомобиля
 app.delete('/api/cars/:id', async (req, res) => {
-    try {
-        const id = req.params.id;
-        const result = await deleteCar(id);
+    const { id } = req.params;
 
-        if (result.changes === 0) {
-            return res.status(404).json({ error: 'Автомобиль не найден' });
+    try {
+        const [result] = await pool.query('DELETE FROM cars WHERE id = ?', [id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Car not found' });
         }
 
-        res.json({ message: 'Автомобиль успешно удален' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.json({ message: 'Car deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete car', details: error.message });
     }
 });
 
 // Маршруты API для клиентов
-// Получение списка клиентов
 app.get('/api/customers', async (req, res) => {
     try {
-        const customers = await getAllCustomers();
-        res.json(customers);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        const page = parseInt(req.query.page) || 1; // Текущая страница (по умолчанию 1)
+        const limit = parseInt(req.query.limit) || 10; // Количество элементов на странице (по умолчанию 10)
+        const offset = (page - 1) * limit;
+
+        // Подсчитываем общее количество клиентов
+        const [countRows] = await pool.query('SELECT COUNT(*) AS total FROM customers');
+        const total = countRows[0].total;
+
+        // Получаем клиентов с учетом пагинации
+        const [rows] = await pool.query('SELECT * FROM customers LIMIT ? OFFSET ?', [limit, offset]);
+
+        res.json({
+            data: rows,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
+    } catch (error) {
+        console.error('Error fetching customers:', error.message);
+        res.status(500).json({ error: 'Failed to fetch customers', details: error.message });
     }
 });
-
-// Получение конкретного клиента по ID
 app.get('/api/customers/:id', async (req, res) => {
+    const { id } = req.params; // Получаем ID из параметров запроса
     try {
-        const id = req.params.id;
-        const customer = await getCustomerById(id);
+        // Выполняем SQL-запрос для получения клиента по ID
+        const [rows] = await pool.query('SELECT * FROM customers WHERE id = ?', [id]);
 
-        if (!customer) {
-            return res.status(404).json({ error: 'Клиент не найден' });
+        // Если клиент не найден, возвращаем ошибку 404
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Customer not found' });
         }
 
-        res.json(customer);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        // Возвращаем данные клиента
+        res.json(rows[0]); // Возвращаем первый элемент массива
+    } catch (error) {
+        // Логируем ошибку и возвращаем статус 500
+        console.error('Error fetching customer:', error.message);
+        res.status(500).json({ error: 'Failed to fetch customer', details: error.message });
     }
 });
-
-// Добавление нового клиента
 app.post('/api/customers', async (req, res) => {
+    const newCustomer = req.body;
+
     try {
-        const newCustomer = req.body;
-        await addCustomer(newCustomer);
-        res.status(201).json({ message: 'Клиент успешно добавлен' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        const [result] = await pool.query(
+            'INSERT INTO customers (firstName, lastName, email, phone, address, city, state, zipCode, country, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                newCustomer.firstName,
+                newCustomer.lastName,
+                newCustomer.email,
+                newCustomer.phone,
+                newCustomer.address,
+                newCustomer.city,
+                newCustomer.state,
+                newCustomer.zipCode,
+                newCustomer.country,
+                newCustomer.avatar,
+            ]
+        );
+        res.status(201).json({ id: result.insertId });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to add customer', details: error.message });
     }
 });
 
-// Обновление клиента
 app.put('/api/customers/:id', async (req, res) => {
-    try {
-        const id = req.params.id;
-        const updatedCustomer = req.body;
-        const result = await updateCustomer(id, updatedCustomer);
+    const { id } = req.params;
+    const updatedCustomer = req.body;
 
-        if (result.changes === 0) {
-            return res.status(404).json({ error: 'Клиент не найден' });
+    try {
+        const [result] = await pool.query(
+            'UPDATE customers SET firstName = ?, lastName = ?, email = ?, phone = ?, address = ?, city = ?, state = ?, zipCode = ?, country = ?, avatar = ? WHERE id = ?',
+            [
+                updatedCustomer.firstName,
+                updatedCustomer.lastName,
+                updatedCustomer.email,
+                updatedCustomer.phone,
+                updatedCustomer.address,
+                updatedCustomer.city,
+                updatedCustomer.state,
+                updatedCustomer.zipCode,
+                updatedCustomer.country,
+                updatedCustomer.avatar,
+                id,
+            ]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Customer not found' });
         }
 
-        res.json({ message: 'Клиент успешно обновлен' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.json({ message: 'Customer updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update customer', details: error.message });
     }
 });
 
-// Удаление клиента
 app.delete('/api/customers/:id', async (req, res) => {
-    try {
-        const id = req.params.id;
-        const result = await deleteCustomer(id);
+    const { id } = req.params;
 
-        if (result.changes === 0) {
-            return res.status(404).json({ error: 'Клиент не найден' });
+    try {
+        const [result] = await pool.query('DELETE FROM customers WHERE id = ?', [id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Customer not found' });
         }
 
-        res.json({ message: 'Клиент успешно удален' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.json({ message: 'Customer deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete customer', details: error.message });
     }
 });
 
-// Обработка несуществующих маршрутов
-app.use((req, res) => {
-    res.status(404).json({ error: 'Маршрут не найден' });
+// Fallback для Vue Router
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Запуск сервера
-app.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
-});
-
-// Закрытие соединения с базой данных при выходе
-process.on('SIGINT', () => {
-    db.close((err) => {
-        if (err) {
-            console.error('Ошибка закрытия базы данных:', err.message);
-        } else {
-            console.log('Соединение с базой данных закрыто');
-        }
-        process.exit(0);
-    });
-});
+(async () => {
+    try {
+        await initializeDatabase(); // Инициализируем базу данных и создаем админа
+        await runSeeder();          // Запускаем сидер
+        app.listen(port, () => {
+            console.log(`Server is running on http://localhost:${port}`);
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error.message);
+    }
+})();

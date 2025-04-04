@@ -22,14 +22,14 @@
           <td>{{ car.year }}</td>
           <td>{{ car.mileage }} км</td>
           <td>
-  <img
-    v-if="car.image"
-    :src="getAssetImage(car.image)"
-    :alt="car.name"
-    style="width: 100px; height: auto;"
-  />
-  <span v-else>Нет изображения</span>
-</td>
+            <img
+              v-if="car.image"
+              :src="getAssetImage(car.image)"
+              :alt="car.name"
+              style="width: 100px; height: auto;"
+            />
+            <span v-else>Нет изображения</span>
+          </td>
           <td>
             <router-link :to="{ name: 'CarShow', params: { id: car.id } }" class="btn btn-info">
               Просмотр
@@ -42,16 +42,39 @@
         </tr>
       </tbody>
     </table>
+
+    <!-- Пагинация -->
+    <div class="pagination">
+      <button
+        @click="changePage(currentPage - 1)"
+        :disabled="currentPage === 1"
+        class="btn btn-secondary"
+      >
+        Предыдущая
+      </button>
+      <span>Страница {{ currentPage }} из {{ totalPages }}</span>
+      <button
+        @click="changePage(currentPage + 1)"
+        :disabled="currentPage === totalPages"
+        class="btn btn-secondary"
+      >
+        Следующая
+      </button>
+    </div>
   </div>
 </template>
 
 <script>
-import { carApi } from '@/services/api'; // Импортируем carApi вместо дефолтного экспорта
+import { carApi } from '@/services/api';
 
 export default {
   data() {
     return {
-      cars: [] // Переменная для хранения списка автомобилей
+      cars: [], // Список автомобилей
+      currentPage: 1, // Текущая страница
+      limit: 10, // Количество элементов на странице
+      total: 0, // Общее количество автомобилей
+      totalPages: 0, // Общее количество страниц
     };
   },
   created() {
@@ -59,20 +82,32 @@ export default {
   },
   methods: {
     fetchCars() {
-      carApi.getCars() // Используем carApi.getCars вместо api.getCars
+      carApi.getCars(this.currentPage, this.limit)
         .then(response => {
-          this.cars = response.data;
+          console.log('Response from server:', response); // Логируем ответ сервера
+          if (!response.data || !response.data.meta) {
+            throw new Error('Invalid response format from server');
+          }
+          this.cars = response.data.data;
+          this.total = response.data.meta.total;
+          this.totalPages = response.data.meta.totalPages;
         })
         .catch(error => {
-          console.error('Ошибка при получении списка автомобилей:', error);
+          console.error('Ошибка при получении списка автомобилей:', error.message);
+          alert('Произошла ошибка при загрузке данных. Попробуйте позже.');
         });
+    },
+    changePage(page) {
+      if (page < 1 || page > this.totalPages) return;
+      this.currentPage = page;
+      this.fetchCars(); // Обновляем данные при смене страницы
     },
     deleteCar(id) {
       if (!confirm('Вы уверены, что хотите удалить этот автомобиль?')) {
         return;
       }
 
-      carApi.deleteCar(id) // Используем carApi.deleteCar вместо api.deleteCar
+      carApi.deleteCar(id)
         .then(() => {
           this.cars = this.cars.filter(car => car.id !== id);
           alert('Автомобиль успешно удален!');
@@ -82,18 +117,15 @@ export default {
           alert(`Произошла ошибка при удалении автомобиля: ${error.message}`);
         });
     },
-    // Метод для получения пути к изображению из assets
     getAssetImage(imageName) {
       try {
-        // Используем require для динамического импорта изображения
         return require(`@/assets/${imageName}`);
       } catch (error) {
-        // Если изображение не найдено, возвращаем пустую строку или заглушку
         console.warn(`Изображение не найдено: ${imageName}`);
-        return '/path/to/default-image.jpg'; // Можно заменить на URL заглушки
+        return '/path/to/default-image.jpg'; // Заглушка
       }
-    }
-  }
+    },
+  },
 };
 </script>
 
@@ -111,8 +143,25 @@ export default {
 .table img {
   width: 50px;
   height: auto;
+  object-fit: cover;
+  border-radius: 5px;
 }
 .btn {
   margin-right: 5px;
+}
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 20px;
+}
+.pagination button {
+  margin: 0 5px;
+  padding: 5px 10px;
+  font-size: 14px;
+}
+.pagination span {
+  margin: 0 10px;
+  font-size: 16px;
 }
 </style>
