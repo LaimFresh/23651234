@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:5000/api', // Адрес вашего бэкенда
+  baseURL: 'https://two3651234.onrender.com/api', // Адрес вашего бэкенда
   timeout: 5000,
   headers: {
     'Content-Type': 'application/json'
